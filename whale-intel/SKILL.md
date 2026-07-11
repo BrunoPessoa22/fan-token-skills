@@ -1,190 +1,197 @@
 ---
 name: whale-intel
-description: Real-time whale wallet tracking with large flow detection and token distribution analysis for fan tokens.
+description: CEX and on-chain DEX whale flow description for fan tokens - buy/sell tilt, exchange inflows, large swaps.
 ---
 
 # Whale Intel
 
-Tracks large wallet activity across fan tokens. Detects whale accumulation, distribution, and unusual flow patterns. Provides token-level holder distribution analysis. Use this when the user wants to understand what "smart money" is doing.
+Describes large-holder activity across fan tokens: CEX order-flow tilt
+(Binance-primary, some HTX/OKX), on-chain exchange inflows, and large DEX swaps
+on FanX (Chiliz Chain). Descriptive history and current tilt -- not signals,
+not advice.
 
-**Base URL:** `https://web-production-ad7c4.up.railway.app`
+**Base URL (REST, free):** `https://web-production-ad7c4.up.railway.app`
 
 ## Commands
 
-### get_whale_flows
-Fetch recent whale transaction flows.
+### get_cex_flow
+Aggregate CEX buy/sell flow per token.
 
-**Endpoint:** `GET /api/v1/whales/flows`
+**Endpoint:** `GET /api/whales/cex/flow`
 
-**Parameters:**
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `token` | string | null | Filter by token symbol. Omit for all tokens. |
-| `min_usd` | float | 5000 | Minimum transaction value in USD |
-| `hours` | int | 24 | Look-back window in hours. Max 168 (7 days). |
-| `direction` | string | null | Filter: `inflow` (buying/accumulating), `outflow` (selling/distributing), or null for both |
-| `limit` | int | 50 | Max results to return |
-
-**When to use:** When the user asks "what are whales doing", "any big buys", "whale activity on PSG", "large transactions", or "smart money flows".
+| `hours` | int | 24 | Look-back window |
 
 **Example request:**
 ```
-GET /api/v1/whales/flows?token=PSG&min_usd=10000&hours=12
+https://web-production-ad7c4.up.railway.app/api/whales/cex/flow?hours=24
 ```
 
-**Example response:**
+**Example response (live capture, 2026-07-11, truncated):**
 ```json
 {
-  "flows": [
+  "period_hours": 24,
+  "tokens": [
     {
-      "id": "wf-001",
-      "token": "PSG",
-      "wallet": "0x1a2b...3c4d",
-      "wallet_label": "known_accumulator_47",
-      "direction": "inflow",
-      "amount_tokens": 45200,
-      "amount_usd": 154534,
-      "price_at_tx": 3.418,
-      "source": "binance_withdrawal",
-      "destination": "chiliz_wallet",
-      "timestamp": "2026-02-17T12:15:00Z",
-      "whale_tier": "mega",
-      "historical_accuracy": 0.72
-    },
-    {
-      "id": "wf-002",
-      "token": "PSG",
-      "wallet": "0x5e6f...7g8h",
-      "wallet_label": null,
-      "direction": "inflow",
-      "amount_tokens": 18000,
-      "amount_usd": 61524,
-      "price_at_tx": 3.418,
-      "source": "chiliz_dex_swap",
-      "destination": "chiliz_wallet",
-      "timestamp": "2026-02-17T11:42:00Z",
-      "whale_tier": "large",
-      "historical_accuracy": null
+      "symbol": "JUV",
+      "buy_volume": 2033217.61,
+      "sell_volume": 2129120.0,
+      "net_flow": -95902.39,
+      "buy_count": 36744,
+      "sell_count": 39778,
+      "signal": "bearish"
     }
-  ],
-  "summary": {
-    "net_flow_usd": 216058,
-    "net_direction": "inflow",
-    "unique_whales": 3,
-    "total_transactions": 5,
-    "inflow_usd": 256058,
-    "outflow_usd": 40000
-  },
-  "count": 2,
-  "filters_applied": {
-    "token": "PSG",
-    "min_usd": 10000,
-    "hours": 12
-  }
+  ]
 }
 ```
 
 **Interpreting results:**
-- **whale_tier:** `mega` (>100k USD), `large` (50-100k USD), `medium` (10-50k USD). Focus on mega and large for signal quality.
-- **wallet_label:** If present, this wallet has been identified and tracked. `known_accumulator_*` wallets have historically preceded price moves.
-- **historical_accuracy:** For labeled wallets, this is their track record (0-1). A wallet with 0.72 accuracy has been "right" 72% of the time historically. Only available for tracked wallets.
-- **source/destination:** `binance_withdrawal` to `chiliz_wallet` = moving off exchange to hold (bullish signal). `chiliz_wallet` to `binance_deposit` = moving to exchange to sell (bearish signal).
-- **summary.net_direction:** The aggregate direction. Strong `inflow` across multiple whales is a high-conviction bullish signal.
-- When presenting: "3 whale wallets moved a net $216k of PSG on-chain in the last 12 hours (net inflow). The largest was a known accumulator wallet with 72% historical accuracy."
+- `net_flow` is buy volume minus sell volume (token units). Negative = net
+  selling pressure on CEXs over the window.
+- The `signal` label is a simple net-flow classification, not a prediction.
+  Present the underlying numbers, not just the label.
+- Coverage is Binance-primary. Counts include mid-size flow, not only whales.
 
-### get_distribution
-Fetch holder distribution analysis for a token.
+### get_cex_trades
+Individual large CEX trades above a USD threshold.
 
-**Endpoint:** `GET /api/v1/whales/distribution`
+**Endpoint:** `GET /api/whales/cex/trades`
 
-**Parameters:**
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `token` | string | required | Token symbol (uppercase) |
-| `include_history` | bool | false | Include 30-day distribution change history |
-
-**When to use:** When the user asks "who holds PSG", "token distribution", "concentration risk", "how distributed is BAR", or when assessing a token's health.
+| `limit` | int | 50 | Max trades returned |
+| `symbol` | string | null | Filter by token |
+| `exchange` | string | null | Filter by exchange |
+| `min_value` | float | 50000 | Minimum trade value (USD) |
 
 **Example request:**
 ```
-GET /api/v1/whales/distribution?token=PSG&include_history=true
+https://web-production-ad7c4.up.railway.app/api/whales/cex/trades?limit=10&min_value=5000
 ```
 
-**Example response:**
+An empty `trades` array is normal at the default $50k threshold -- fan-token
+trades are small (see `get_stats`: average CEX trade ~$57). Lower `min_value`
+to see real flow, and say what threshold you used.
+
+### get_exchange_inflows
+On-chain deposits into exchange wallets (a leading indicator of intent to sell).
+
+**Endpoint:** `GET /api/exchange-inflows`
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `token` | string | null | Filter by token |
+| `hours` | int | 24 | Look-back window |
+
+**Example request:**
+```
+https://web-production-ad7c4.up.railway.app/api/exchange-inflows
+```
+
+**Example response (live capture, 2026-07-11, truncated):**
 ```json
 {
-  "token": "PSG",
-  "total_holders": 48250,
-  "circulating_supply": 20000000,
-  "distribution": {
-    "top_10_pct": 42.5,
-    "top_50_pct": 61.3,
-    "top_100_pct": 72.8,
-    "retail_pct": 27.2
-  },
-  "top_holders": [
+  "summary": [
     {
-      "rank": 1,
-      "wallet": "0xabc...def",
-      "label": "Socios.com Treasury",
-      "balance_tokens": 3200000,
-      "balance_pct": 16.0,
-      "change_30d_pct": 0.0
-    },
-    {
-      "rank": 2,
-      "wallet": "0x123...456",
-      "label": "Binance Hot Wallet",
-      "balance_tokens": 1800000,
-      "balance_pct": 9.0,
-      "change_30d_pct": -2.1
-    },
-    {
-      "rank": 3,
-      "wallet": "0x789...abc",
-      "label": null,
-      "balance_tokens": 950000,
-      "balance_pct": 4.75,
-      "change_30d_pct": 8.5
+      "token": "CHZ",
+      "inflow_1h": 1051506.49,
+      "inflow_4h": 8044899.30,
+      "inflow_24h": 14936669.24,
+      "inflow_1h_usd": 18564.98,
+      "inflow_4h_usd": 142146.68,
+      "inflow_24h_usd": 262021.28,
+      "unique_depositors_4h": 17,
+      "top_exchange_4h": "binance"
     }
-  ],
-  "history": [
-    {
-      "date": "2026-01-18",
-      "total_holders": 46100,
-      "top_10_pct": 44.2
-    },
-    {
-      "date": "2026-02-17",
-      "total_holders": 48250,
-      "top_10_pct": 42.5
-    }
-  ],
-  "health_score": 68,
-  "concentration_risk": "moderate"
+  ]
 }
 ```
 
-**Interpreting results:**
-- **top_10_pct:** If above 50%, the token is highly concentrated -- whale moves will have outsized price impact. Warn the user.
-- **top_10_pct decreasing over time:** Positive sign, distribution is improving.
-- **retail_pct:** Higher is better for organic price discovery. Below 20% means whales dominate the market.
-- **change_30d_pct per holder:** If unlabeled top holders are increasing their position, that is a bullish whale signal.
-- **health_score:** 0-100 composite of distribution quality. Above 70 is healthy, below 40 is concerning.
-- **concentration_risk:** `low`, `moderate`, `high`, `extreme`. Always mention this when discussing a token's fundamentals.
-- **Binance Hot Wallet decreasing:** Could mean users are withdrawing to hold (bullish) or reduced trading interest (neutral). Cross-reference with flow data.
+- Rising inflows with multiple `unique_depositors_4h` describes broad-based
+  movement toward exchanges; a single depositor may be treasury ops. Report the
+  depositor count alongside the volume.
 
-## Whale Signal Patterns
+### get_dex_swaps
+Large on-chain swaps on FanX DEX with tx hashes.
 
-When interpreting whale data, look for these high-value patterns:
+**Endpoint:** `GET /api/whales/dex/swaps`
 
-| Pattern | What It Means | Confidence |
-|---------|--------------|------------|
-| Multiple whales accumulating same token | Coordinated buying, often pre-catalyst | High |
-| CEX to wallet transfers clustered | Moving off exchange to hold | Medium-High |
-| Known accumulator wallet active | Historically profitable whale is positioning | High (check `historical_accuracy`) |
-| Large outflows to exchange | Potential sell pressure incoming | Medium |
-| Distribution improving (top_10 decreasing) | Healthier token, less manipulation risk | Medium |
-| Single mega whale buying | Could be meaningful or could be treasury movement -- check label | Low-Medium |
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `limit` | int | 50 | Max swaps returned |
+| `symbol` | string | null | Filter by token |
+| `min_value` | float | 50000 | Minimum swap value (USD) |
 
-Always cross-reference whale signals with the signal-scores skill for a complete picture.
+**Example request:**
+```
+https://web-production-ad7c4.up.railway.app/api/whales/dex/swaps?limit=5&min_value=1000
+```
+
+Each swap carries `tx_hash`, `block_number`, `pool_address`, `token_in`/`token_out`,
+amounts, `value_usd`, and `side` -- verifiable on-chain.
+
+### get_dex_volume
+Per-token DEX buy/sell volume aggregates.
+
+**Endpoint:** `GET /api/whales/dex/volume`
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hours` | int | 24 | Look-back window |
+
+**Example request:**
+```
+https://web-production-ad7c4.up.railway.app/api/whales/dex/volume?hours=24
+```
+
+### get_stats
+One-call CEX + DEX whale activity summary.
+
+**Endpoint:** `GET /api/whales/stats`
+
+**Example request:**
+```
+https://web-production-ad7c4.up.railway.app/api/whales/stats
+```
+
+**Example response (live capture, 2026-07-11):**
+```json
+{
+  "period": "24h",
+  "cex": {
+    "total_trades": 274268,
+    "total_volume": 15549629.48,
+    "avg_trade_size": 56.70,
+    "largest_trade": 19586.76,
+    "exchanges_active": 3,
+    "tokens_active": 16
+  },
+  "dex": {
+    "total_swaps": 2182,
+    "total_volume": 75524.70,
+    "avg_swap_size": 34.61,
+    "largest_swap": 18398.18
+  },
+  "threshold_usd": 50000
+}
+```
+
+- Use this first to calibrate expectations: average trade sizes are tens of
+  dollars, so "whale" thresholds must be set relative to this market, not to
+  BTC-scale markets.
+
+## Related surfaces
+
+- **MCP (free):** `tokenintel_whale_flows`, `tokenintel_capital_rotation` at
+  `https://mcp-production-f681.up.railway.app/mcp`.
+- **x402 (paid):** `whale-flows` ($0.05, all tokens) and `whale-flows-token`
+  ($0.05, one token with per-exchange breakdown) at
+  `https://x402.brunopessoa.com/catalog`.
+
+## Honest limitations
+
+- CEX coverage is Binance-primary with some HTX/OKX; it is not all 10+ venues.
+- There is no per-wallet labeling or "historical accuracy" score on this
+  surface. Do not invent wallet reputations.
+- Buy/sell classification is taker-side heuristic; treat tilt as descriptive.
