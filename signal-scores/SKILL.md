@@ -1,127 +1,125 @@
 ---
 name: signal-scores
-description: Retrieve unified 0-100 composite signal scores for fan tokens with direction and confidence breakdowns.
+description: Descriptive 0-100 composite condition scores for fan tokens with a five-component breakdown.
 ---
 
 # Signal Scores
 
-Unified composite scoring system for all fan tokens. Each token gets a 0-100 score combining on-chain flows, sports sentiment, social momentum, and technical signals. Use this as the primary entry point for "which tokens look interesting right now."
+A descriptive 0-100 composite score per fan token summarizing current
+conditions across five weighted components: whale flow, macro regime, price
+momentum, social momentum, and sports catalyst. Use it as a quick "what is
+active right now" ranking. It describes conditions; it is not a trade
+recommendation and carries no win-rate claim.
 
-**Base URL:** `https://web-production-ad7c4.up.railway.app`
+**Base URL (REST, free):** `https://web-production-ad7c4.up.railway.app`
 
 ## Commands
 
 ### list_scores
-Fetch scores for all tokens, optionally filtered by minimum score or direction.
+Scores for all tracked tokens.
 
 **Endpoint:** `GET /api/v1/scores`
 
-**Parameters:**
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `min_score` | int | 0 | Only return tokens with composite score >= this value |
-| `direction` | string | null | Filter by `bullish` or `bearish` |
-| `sort_by` | string | `score` | Sort field: `score`, `symbol`, `change_1h` |
-
-**When to use:** When the user asks "what tokens are hot", "any strong signals", "show me bullish tokens", or anything about overall market sentiment across fan tokens.
+| `min_score` | int | 0 | Only tokens with composite score >= this value |
+| `direction` | string | null | Filter by direction label |
+| `sort_by` | string | `score` | Sort field |
 
 **Example request:**
 ```
-GET /api/v1/scores?min_score=60&direction=bullish&sort_by=score
+https://web-production-ad7c4.up.railway.app/api/v1/scores?min_score=30
 ```
 
-**Example response:**
+**Example response (live capture, 2026-07-11, truncated -- note: a bare JSON array):**
 ```json
-{
-  "scores": [
-    {
-      "symbol": "PSG",
-      "score": 82,
-      "direction": "bullish",
-      "confidence": 0.78,
-      "components": {
-        "on_chain": 75,
-        "sports": 90,
-        "social": 68,
-        "technical": 85
-      },
-      "price_usd": 3.42,
-      "change_1h": 2.1,
-      "change_24h": 5.8,
-      "updated_at": "2026-02-17T14:30:00Z"
-    }
-  ],
-  "count": 12,
-  "timestamp": "2026-02-17T14:30:00Z"
-}
+[
+  {
+    "token_symbol": "JUV",
+    "score": 41,
+    "direction": "neutral",
+    "components": {
+      "whale_flow": { "max": 26.8, "score": 13.4 },
+      "macro_regime": { "max": 19.6, "score": 10.77 },
+      "price_momentum": { "max": 16.1, "score": 8.48 },
+      "social_momentum": { "max": 10.7, "score": 8.99 },
+      "sports_catalyst": { "max": 26.8, "score": 0.0 }
+    },
+    "computed_at": "2026-07-11T20:32:33.792920+00:00"
+  }
+]
 ```
 
 **Interpreting results:**
-- **score 70-100:** Strong signal, worth highlighting to the user with specific component breakdown.
-- **score 40-69:** Moderate activity, mention if relevant to the user's query.
-- **score 0-39:** Low activity, only mention if user specifically asks about that token.
-- **direction:** `bullish` means net positive momentum, `bearish` means net negative.
-- **confidence:** 0-1 float indicating how reliable the composite signal is. Below 0.4, caveat the signal as "low confidence."
-- **components:** Break these down when the user wants to understand *why* a token is scoring high. For example: "PSG is at 82 largely driven by sports sentiment (90) ahead of their Champions League match."
+- Each component reports `score` out of its `max` weight. Weights: whale flow
+  26.8, sports catalyst 26.8, macro regime 19.6, price momentum 16.1, social
+  momentum 10.7 (sums to 100).
+- `sports_catalyst: 0` simply means no imminent mapped fixture -- common outside
+  match windows.
+- Scores cluster in the 35-45 band in quiet markets. Treat relative ranking as
+  the information, not the absolute number.
+- `direction` is a coarse label derived from the components. Do not present it
+  as a prediction; there is no accuracy guarantee attached.
+- Check `computed_at` for staleness before presenting.
 
 ### get_token_score
-Fetch the detailed score breakdown for a single token.
+Detailed breakdown for a single token.
 
 **Endpoint:** `GET /api/v1/scores/{symbol}`
 
-**Parameters:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `symbol` | path | Token symbol, e.g. `PSG`, `BAR`, `JUV` (uppercase) |
-
-**When to use:** When the user asks about a specific token's signal, e.g. "how does PSG look", "what's the score on BAR".
-
 **Example request:**
 ```
-GET /api/v1/scores/PSG
+https://web-production-ad7c4.up.railway.app/api/v1/scores/PSG
 ```
 
-**Example response:**
+**Example response (live capture, 2026-07-11, truncated):**
 ```json
 {
-  "symbol": "PSG",
-  "score": 82,
-  "direction": "bullish",
-  "confidence": 0.78,
+  "token_symbol": "PSG",
+  "score": 38,
+  "direction": "neutral",
   "components": {
-    "on_chain": 75,
-    "sports": 90,
-    "social": 68,
-    "technical": 85
+    "whale_flow": { "max": 26.8, "score": 13.4 },
+    "macro_regime": { "max": 19.6, "score": 10.85 },
+    "price_momentum": { "max": 16.1, "score": 7.59 },
+    "social_momentum": { "max": 10.7, "score": 6.43 },
+    "sports_catalyst": { "max": 26.8, "score": 0.0 }
   },
-  "signals_active": [
+  "computed_at": "2026-07-11T20:38:21.407753+00:00",
+  "active_signals": [],
+  "upcoming_matches": [],
+  "recent_whales": [
     {
-      "type": "MATCH_ALPHA",
-      "detail": "Champions League vs Bayern Munich in 4h",
-      "weight": 0.35
-    },
-    {
-      "type": "WHALE_ACCUMULATION",
-      "detail": "3 wallets accumulated 45k PSG in last 2h",
-      "weight": 0.25
+      "direction": "buy",
+      "volume_usd": 20.05,
+      "exchange": "binance",
+      "detected_at": "2026-07-11T20:38:07.507264+00:00"
     }
-  ],
-  "price_usd": 3.42,
-  "change_1h": 2.1,
-  "change_24h": 5.8,
-  "volume_24h": 892000,
-  "updated_at": "2026-02-17T14:30:00Z"
+  ]
 }
 ```
 
 **Interpreting results:**
-- The `signals_active` array tells you exactly what is driving the score. Always surface these to the user.
-- `weight` shows how much each active signal contributes to the composite. Higher weight = more influential.
-- Combine score + active signals for a narrative: "PSG scores 82 (bullish) -- Champions League match in 4 hours is the main driver (weight 0.35), plus whale accumulation detected."
+- `recent_whales` on this surface includes small trades (tens of USD) -- it is
+  recent flow, not literal whales. Use the whale-intel skill for size-filtered
+  flow and thresholds.
+- `upcoming_matches` populates the sports component; cross-check with the
+  sports-data skill for the full calendar.
+- Narrate the components, not just the composite: "PSG scores 38 (neutral);
+  whale flow contributes 13.4/26.8, no sports catalyst in window."
 
-## Common Token Symbols
+## Related surfaces
 
-Standard fan token symbols used across all endpoints:
-`PSG`, `BAR`, `JUV`, `ACM`, `ASR`, `ATM`, `MCI`, `POR`, `GAL`, `INTER`, `NAP`, `LAZ`, `OG`, `CHZ`, `SANTOS`, `CITY`, `AFC`, `LEG`, `ARG`, `TRA`, `ALPINE`
+- **MCP (free):** `tokenintel_health_matrix` (A-F grades, similar intent),
+  `tokenintel_briefing` at `https://mcp-production-f681.up.railway.app/mcp`.
+- **x402 (paid):** `market-regime` ($0.02) and `token-context` ($0.03) at
+  `https://x402.brunopessoa.com/catalog`.
 
-Always convert user input to uppercase before calling the API. If the user says "barcelona" use `BAR`, "paris saint-germain" use `PSG`, etc.
+## Notes
+
+- Common symbols: `PSG`, `BAR`, `JUV`, `ACM`, `INTER`, `ATM`, `CITY`, `GAL`,
+  `ASR`, `NAP`, `POR`, `ARG`, `SPAIN`, `OG`, `SANTOS`, `ALPINE`, `CHZ`.
+  Uppercase before calling.
+- Earlier versions of this skill documented an `on_chain/sports/social/technical`
+  component set and a score-accuracy endpoint. Those do not exist on the live
+  surface; the payloads above are the real contract.

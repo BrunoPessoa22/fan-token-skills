@@ -1,0 +1,61 @@
+name: verify-endpoints
+
+# Curl every product URL documented in any SKILL.md. A paid x402 SKU answering
+# 402 is a PASS (that is its unpaid contract); anything else outside 2xx fails.
+# This exists so the repo can never again document dead endpoints.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract and verify documented URLs
+        run: |
+          set -u
+          # Product hosts we assert on; other links (github, explorers) are
+          # informational and not gated here.
+          HOSTS='web-production-ad7c4\.up\.railway\.app|mcp-production-f681\.up\.railway\.app|x402\.brunopessoa\.com|www\.fantokenintel\.com'
+
+          urls=$(grep -RhoE 'https://[A-Za-z0-9./_?=&%-]+' --include='SKILL.md' . \
+            | sed 's/[.,]$//' \
+            | grep -E "https://($HOSTS)" \
+            | sort -u)
+
+          if [ -z "$urls" ]; then
+            echo "No documented product URLs found -- extraction is broken."
+            exit 1
+          fi
+
+          echo "Verifying $(echo "$urls" | wc -l | tr -d ' ') URLs"
+          fail=0
+          while IFS= read -r url; do
+            if [ "${url%/mcp}" != "$url" ]; then
+              # MCP streamable endpoint: must accept a POST initialize.
+              code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST "$url" \
+                -H 'Content-Type: application/json' \
+                -H 'Accept: application/json, text/event-stream' \
+                -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci-verify","version":"0.0.1"}}}')
+            elif [ "${url%/api/v1/backtest}" != "$url" ]; then
+              # Backtest submit is POST-only; exercise it with its documented body.
+              code=$(curl -s -o /dev/null -w '%{http_code}' -m 60 -X POST "$url" \
+                -H 'Content-Type: application/json' \
+                -d '{"entry_timing":"-2h","exit_timing":"fulltime","token_filter":["PSG"]}')
+            else
+              code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "$url")
+            fi
+            case "$code" in
+              2??) echo "PASS $code $url" ;;
+              402) echo "PASS $code (paid x402 SKU) $url" ;;
+              *)   echo "FAIL $code $url"; fail=1 ;;
+            esac
+          done <<< "$urls"
+
+          exit $fail

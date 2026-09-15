@@ -1,180 +1,143 @@
 ---
 name: backtest-engine
-description: Backtest trading strategies against historical fan token data with configurable entry/exit timing and filters.
+description: Replay match-timing strategies against real historical fan-token matchday prices - honest, descriptive results.
 ---
 
 # Backtest Engine
 
-Run historical backtests on fan token trading strategies. Supports custom entry/exit timing, token filtering, strategy presets, and detailed performance analytics. Use this when the user wants to validate a strategy idea or compare approaches.
+Replays simple match-timing rules (enter at -24h/-2h/kickoff/fulltime, exit at
+fulltime/+1h/+24h or target/stop) against the real historical matchday price
+corpus. It is a descriptive research tool: it tells you what WOULD have
+happened, and the honest answer is usually that naive matchday strategies lose
+money. Present results as history, never as a promise of future returns.
 
-**Base URL:** `https://web-production-ad7c4.up.railway.app`
+**Base URL (REST, free):** `https://web-production-ad7c4.up.railway.app`
 
 ## Commands
 
-### run_backtest
-Submit a new backtest job. Backtests run asynchronously -- submit, then poll for results.
-
-**Endpoint:** `POST /api/v1/backtest`
-
-**Body (JSON):**
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `entry_timing` | string | yes | When to enter. Options: `pre_match_4h`, `pre_match_2h`, `pre_match_1h`, `kickoff`, `halftime`, `fulltime`, `signal_fired` |
-| `exit_timing` | string | yes | When to exit. Options: `pre_match_1h`, `kickoff`, `halftime`, `fulltime`, `post_match_1h`, `post_match_4h`, `post_match_24h`, `trailing_stop` |
-| `token_filter` | array | no | List of token symbols to include. Omit for all tokens. |
-| `date_range` | object | no | `{ "from": "2025-01-01", "to": "2026-02-17" }`. Default is last 12 months. |
-| `min_importance` | int | no | Minimum match importance (0-100). Default 0. |
-| `competition_filter` | array | no | Filter by competition: `champions_league`, `europa_league`, `la_liga`, `premier_league`, `serie_a`, `ligue_1`, etc. |
-| `stop_loss_pct` | float | no | Stop loss percentage (e.g. 5.0 for -5%). Default: none. |
-| `take_profit_pct` | float | no | Take profit percentage (e.g. 10.0 for +10%). Default: none. |
-| `position_size_usdt` | float | no | Simulated position size. Default: 100 USDT. |
-
-**When to use:** When the user says "backtest this strategy", "how would X have performed", "test buying before matches", or anything about historical performance of a trading approach.
-
-**Example request:**
-```json
-POST /api/v1/backtest
-{
-  "entry_timing": "pre_match_4h",
-  "exit_timing": "kickoff",
-  "token_filter": ["PSG", "BAR", "JUV"],
-  "min_importance": 60,
-  "stop_loss_pct": 3.0,
-  "position_size_usdt": 100
-}
-```
-
-**Example response (job submitted):**
-```json
-{
-  "job_id": "bt-a1b2c3d4",
-  "status": "queued",
-  "estimated_seconds": 15,
-  "params": {
-    "entry_timing": "pre_match_4h",
-    "exit_timing": "kickoff",
-    "token_filter": ["PSG", "BAR", "JUV"],
-    "min_importance": 60,
-    "stop_loss_pct": 3.0,
-    "position_size_usdt": 100
-  }
-}
-```
-
-After receiving the job_id, poll `GET /api/v1/backtest/{job_id}` until status is `completed`.
-
-### get_backtest_results
-Fetch results for a submitted backtest job.
-
-**Endpoint:** `GET /api/v1/backtest/{job_id}`
-
-**Parameters:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `job_id` | path | The job ID returned from POST /api/v1/backtest |
-
-**When to use:** After submitting a backtest, poll this every few seconds until `status` is `completed`.
-
-**Example response (completed):**
-```json
-{
-  "job_id": "bt-a1b2c3d4",
-  "status": "completed",
-  "results": {
-    "total_trades": 87,
-    "winning_trades": 58,
-    "losing_trades": 29,
-    "win_rate": 66.7,
-    "avg_return_pct": 2.8,
-    "total_return_pct": 243.6,
-    "max_drawdown_pct": -8.2,
-    "sharpe_ratio": 1.45,
-    "profit_factor": 2.1,
-    "avg_hold_duration": "3h 42m",
-    "best_trade": { "symbol": "PSG", "return_pct": 12.3, "match": "PSG vs Real Madrid UCL" },
-    "worst_trade": { "symbol": "JUV", "return_pct": -3.0, "match": "JUV vs Napoli Serie A" },
-    "by_token": [
-      { "symbol": "PSG", "trades": 31, "win_rate": 71.0, "avg_return": 3.5 },
-      { "symbol": "BAR", "trades": 29, "win_rate": 65.5, "avg_return": 2.6 },
-      { "symbol": "JUV", "trades": 27, "win_rate": 63.0, "avg_return": 2.2 }
-    ],
-    "by_month": [
-      { "month": "2025-09", "trades": 12, "return_pct": 18.5 },
-      { "month": "2025-10", "trades": 14, "return_pct": 22.1 }
-    ]
-  }
-}
-```
-
-**Interpreting results:**
-- **win_rate above 60%:** Historically solid for fan token strategies. Present positively.
-- **win_rate 50-60%:** Marginal. Note that slippage and fees could erode this.
-- **win_rate below 50%:** The strategy underperforms. Suggest adjustments.
-- **sharpe_ratio above 1.0:** Good risk-adjusted return. Above 2.0 is excellent.
-- **profit_factor above 1.5:** More profit than loss. Below 1.0 means net negative.
-- **max_drawdown_pct:** Always mention this. Users need to know worst-case.
-- **by_token:** Highlight which tokens the strategy works best/worst for. Some tokens have stronger match-day patterns.
-- **by_month:** Show seasonality. European football season (Aug-May) typically has more signal than off-season.
-
-### list_presets
-List available pre-built strategy presets.
+### get_presets
+Pre-built strategy templates.
 
 **Endpoint:** `GET /api/v1/backtest/presets`
 
-**When to use:** When the user wants to see what strategies are available out of the box, or says "what strategies can I test" or "show me presets".
+**Example request:**
+```
+https://web-production-ad7c4.up.railway.app/api/v1/backtest/presets
+```
 
-**Example response:**
+**Example response (live capture, 2026-07-11, truncated):**
 ```json
 {
   "presets": [
     {
-      "id": "pre_match_pump",
-      "name": "Pre-Match Pump",
-      "description": "Buy 4h before kickoff, sell at kickoff. Classic match-day momentum.",
-      "entry_timing": "pre_match_4h",
-      "exit_timing": "kickoff",
-      "min_importance": 50
+      "id": "buy_2h_sell_fulltime",
+      "name": "Buy 2h Pre-Match, Sell at Fulltime",
+      "params": { "entry_timing": "-2h", "exit_timing": "fulltime" }
     },
     {
-      "id": "ucl_alpha",
-      "name": "Champions League Alpha",
-      "description": "Buy 2h pre-kickoff for Champions League matches only. High importance filter.",
-      "entry_timing": "pre_match_2h",
-      "exit_timing": "post_match_1h",
-      "competition_filter": ["champions_league"],
-      "min_importance": 70
-    },
-    {
-      "id": "win_hold",
-      "name": "Win & Hold",
-      "description": "Enter at kickoff, hold until 24h post-match. Captures post-win momentum.",
-      "entry_timing": "kickoff",
-      "exit_timing": "post_match_24h",
-      "min_importance": 40
-    },
-    {
-      "id": "trailing_stop_v1",
-      "name": "Trailing Stop Momentum",
-      "description": "Enter on signal fire with 3% trailing stop. Rides momentum without fixed exit.",
-      "entry_timing": "signal_fired",
-      "exit_timing": "trailing_stop",
-      "stop_loss_pct": 3.0
+      "id": "fade_post_loss",
+      "name": "Fade Post-Loss Dumps",
+      "params": { "entry_timing": "fulltime", "exit_timing": "+24h", "result_filter": "loss" }
     }
   ]
 }
 ```
 
-**Interpreting presets:**
-- Presets are starting points. Users can modify any parameter before running.
-- When presenting presets, give a one-line summary and the key idea behind each.
-- If a user describes a strategy in plain English, try to map it to a preset first, then customize if needed.
+### get_featured
+Pre-computed results for the preset strategies across the full corpus.
 
-## Workflow
+**Endpoint:** `GET /api/v1/backtest/featured`
 
-1. User describes a strategy or asks to backtest something.
-2. Map their description to `entry_timing`, `exit_timing`, and filters.
-3. Check presets with `GET /api/v1/backtest/presets` if unsure.
-4. Submit with `POST /api/v1/backtest`.
-5. Poll `GET /api/v1/backtest/{job_id}` until complete (typically 5-20 seconds).
-6. Present results with focus on win rate, average return, max drawdown, and per-token breakdown.
-7. Suggest modifications if performance is weak (e.g., "try tighter stop loss" or "filter to Champions League only").
+**Example request:**
+```
+https://web-production-ad7c4.up.railway.app/api/v1/backtest/featured
+```
+
+**Example response (live capture, 2026-07-11, truncated):**
+```json
+{
+  "strategies": [
+    {
+      "id": "buy_2h_sell_fulltime",
+      "total_trades": 2361,
+      "win_rate": 41.21,
+      "avg_return_pct": -1.2364,
+      "sharpe_ratio": -2.0608,
+      "profit_factor": 0.301,
+      "best_trade_pct": 49.19,
+      "worst_trade_pct": -93.15
+    }
+  ]
+}
+```
+
+**Interpreting results (important):**
+- These are real numbers and they are NEGATIVE: the classic "buy before
+  kickoff" trade lost an average -1.24% per trade over 2,361 matchdays. Lead
+  with that honesty -- it is the whole value of the tool.
+- `profit_factor` below 1 means gross losses exceed gross wins.
+- Use featured results to debunk folk strategies before a user spends money
+  testing them live.
+
+### run_backtest
+Run a custom backtest. Synchronous: the response contains the results.
+
+**Endpoint:** `POST /api/v1/backtest` (Content-Type: application/json; no API
+key required)
+
+Request body (`BacktestRequest`):
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `entry_timing` | string | required | One of `-24h`, `-2h`, `kickoff`, `fulltime` |
+| `exit_timing` | string | required | One of `fulltime`, `+1h`, `+24h`, `target_pct`, `stop_pct` |
+| `target_pct` | number | 3.0 | Target profit % (for `target_pct` exit), 0-100 |
+| `stop_pct` | number | -2.0 | Stop loss % (for `stop_pct` exit), -50-0 |
+| `token_filter` | string[] | null | e.g. `["BAR","PSG"]` |
+| `date_range_start` / `date_range_end` | string | null | ISO dates |
+
+**Example (verified live, 2026-07-11):**
+```bash
+curl -s -X POST https://web-production-ad7c4.up.railway.app/api/v1/backtest \
+  -H "Content-Type: application/json" \
+  -d '{"entry_timing":"-2h","exit_timing":"fulltime","token_filter":["PSG"]}'
+```
+
+**Response (truncated):**
+```json
+{
+  "status": "completed",
+  "results": {
+    "total_trades": 163,
+    "win_count": 59,
+    "loss_count": 98,
+    "win_rate": 36.2,
+    "avg_return_pct": -0.425,
+    "max_drawdown_pct": 74.07,
+    "sharpe_ratio": -3.6009,
+    "profit_factor": 0.4296,
+    "equity_curve": [0.471, 0.1845, "..."]
+  }
+}
+```
+
+- The response is synchronous (`status: completed` with inline `results`).
+  `GET /api/v1/backtest/{job_id}` exists for job lookup but you will normally
+  not need it.
+
+**Interpreting results:**
+- Always report `total_trades` (sample size), `win_rate`, `avg_return_pct`, and
+  `max_drawdown_pct` together. A win rate without drawdown is marketing, not
+  analysis.
+- Backtests here ignore fees, spread, and slippage -- real results would be
+  worse. Say so.
+- Past performance does not predict future results. This engine exists to test
+  and usually reject hypotheses cheaply.
+
+## Related surfaces
+
+- **MCP (free):** `tokenintel_match_correlation` and
+  `tokenintel_match_impact_history` cover the same corpus per token at
+  `https://mcp-production-f681.up.railway.app/mcp`.
+- **x402 (paid):** for event-conditioned reaction profiles (goal/red-card level
+  rather than match level) see the match-intel skill.
